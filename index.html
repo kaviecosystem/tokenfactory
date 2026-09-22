@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Token Launch Console</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#080b14; --panel:#111726; --panel-2:#0d1220; --line:#1e2740;
+    --ink:#e8ecf6; --muted:#8592b0; --faint:#5a678c;
+    --gold:#f0b90b; --gold-dim:#a9820c; --ok:#3ddc84; --bad:#ff6b6b; --pending:#6ba7ff;
+    --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(240,185,11,.08), transparent 60%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans); line-height:1.5;
+    -webkit-font-smoothing:antialiased; min-height:100dvh;
+  }
+  a{color:var(--gold)}
+  .wrap{max-width:720px; margin:0 auto; padding:28px 20px 80px}
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:28px}
+  .brand{display:flex; align-items:center; gap:12px}
+  .logo{width:36px; height:36px; border-radius:9px; background:linear-gradient(150deg,var(--gold),#7a5c04);
+    display:grid; place-items:center; font-weight:800; color:#1a1200; font-size:18px}
+  .brand h1{font-size:16px; margin:0; letter-spacing:.2px}
+  .brand p{margin:0; font-size:12px; color:var(--muted)}
+  .net-wrap{display:flex; align-items:center; gap:10px; flex:none}
+  .net{font-family:var(--mono); font-size:12px; color:var(--muted); text-align:right}
+  .net b{color:var(--ink)}
+  header .btn{flex:none}
+
+  .btn{font-family:var(--sans); font-weight:600; font-size:14px; border:1px solid var(--line);
+    background:var(--panel); color:var(--ink); padding:11px 16px; border-radius:10px; cursor:pointer;
+    transition:border-color .15s, background .15s, transform .05s}
+  .btn:hover{border-color:#33406a}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+  .btn.gold{background:linear-gradient(150deg,var(--gold),var(--gold-dim)); color:#1a1200; border-color:transparent}
+  .btn.gold:hover{filter:brightness(1.06)}
+  .btn.ghost{background:transparent}
+  .btn.wide{width:100%}
+
+  .step{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; margin-bottom:16px;
+    position:relative; transition:opacity .2s}
+  .step[data-locked="1"]{opacity:.5; pointer-events:none}
+  .step-head{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+  .num{width:26px; height:26px; flex:none; border-radius:50%; border:1px solid var(--line);
+    display:grid; place-items:center; font-family:var(--mono); font-size:13px; color:var(--muted)}
+  .step[data-done="1"] .num{background:var(--ok); color:#062; border-color:transparent; font-weight:700}
+  .step.admin{border-color:rgba(240,185,11,.28); background:linear-gradient(180deg,rgba(240,185,11,.05),transparent 60%),var(--panel)}
+  .step h2{font-size:15px; margin:0; font-weight:650}
+  .step .sub{font-size:12.5px; color:var(--muted); margin:2px 0 0}
+
+  label{display:block; font-size:12.5px; color:var(--muted); margin:0 0 6px}
+  .field{margin-bottom:14px}
+  .row{display:flex; gap:12px}
+  .row>.field{flex:1}
+  input{width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--sans); font-size:14px; padding:11px 12px; border-radius:9px; outline:none}
+  input:focus{border-color:var(--gold-dim)}
+  input.mono{font-family:var(--mono); font-size:12.5px}
+
+  .kv{display:flex; justify-content:space-between; gap:12px; font-size:13px; padding:7px 0; border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-family:var(--mono); color:var(--ink); text-align:right; word-break:break-all}
+
+  .note{font-size:12px; color:var(--muted); margin-top:10px}
+
+  /* manual verification panel */
+  .divider{display:flex; align-items:center; gap:12px; margin:20px 0 4px; color:var(--faint); font-size:12px}
+  .divider::before,.divider::after{content:""; height:1px; background:var(--line); flex:1}
+  .manual{margin-top:14px}
+  .code-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:14px 0 6px}
+  .code-head span{font-size:12.5px; color:var(--muted)}
+  .copy{font-family:var(--sans); font-size:12px; font-weight:600; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--ink); padding:5px 11px; border-radius:8px; cursor:pointer}
+  .copy:hover{border-color:#33406a}
+  .copy.done{color:var(--ok); border-color:rgba(61,220,132,.4)}
+  pre.code, textarea.code{width:100%; background:#070a12; border:1px solid var(--line); border-radius:10px;
+    color:#c7d2ea; font-family:var(--mono); font-size:11.5px; line-height:1.55; padding:12px 14px;
+    margin:0; overflow:auto; max-height:280px; white-space:pre; tab-size:2}
+  textarea.code{resize:vertical; min-height:120px}
+  code.inline{font-family:var(--mono); font-size:12px; color:#c7d2ea; word-break:break-all}
+
+  /* transaction toasts */
+  #toasts{position:fixed; z-index:9999; right:16px; bottom:16px; display:flex; flex-direction:column; gap:10px; width:min(360px, calc(100vw - 32px))}
+  @media (max-width:520px){ #toasts{left:12px; right:12px; width:auto; bottom:calc(12px + env(safe-area-inset-bottom,0px))} }
+  .toast{background:var(--panel); border:1px solid var(--line); border-left-width:3px; border-radius:12px;
+    padding:12px 12px 12px 13px; box-shadow:0 10px 34px rgba(0,0,0,.45); display:flex; gap:10px; align-items:flex-start;
+    animation:toastIn .18s ease}
+  @keyframes toastIn{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){.toast{animation:none}}
+  .toast.pending{border-left-color:var(--pending)}
+  .toast.success{border-left-color:var(--ok)}
+  .toast.error{border-left-color:var(--bad)}
+  .toast.info{border-left-color:var(--muted)}
+  .toast .ic{flex:none; width:18px; height:18px; margin-top:1px; display:grid; place-items:center; font-size:13px; font-weight:700}
+  .toast.success .ic{color:var(--ok)} .toast.error .ic{color:var(--bad)} .toast.info .ic{color:var(--muted)}
+  .toast .ic .spin{width:14px; height:14px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--pending); animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.toast .ic .spin{animation:none}}
+  .toast .body{flex:1; min-width:0}
+  .toast .t{font-size:13px; font-weight:600; line-height:1.35; word-break:break-word}
+  .toast .lnk{margin-top:3px}
+  .toast a.tx{font-family:var(--mono); font-size:11.5px; color:var(--gold); text-decoration:none}
+  .toast a.tx:hover{text-decoration:underline}
+  .toast .x{flex:none; background:none; border:0; color:var(--faint); font-size:17px; line-height:1; cursor:pointer; padding:0 2px}
+  .toast .x:hover{color:var(--ink)}
+  .warn{font-size:12.5px; color:var(--gold); background:rgba(240,185,11,.07);
+    border:1px solid rgba(240,185,11,.25); border-radius:9px; padding:10px 12px; margin-top:12px}
+
+  .status{display:flex; align-items:center; gap:9px; font-size:13px; font-family:var(--mono); margin-top:12px}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)} .dot.pending{background:var(--pending); animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.dot.pending{animation:none}}
+
+  details.cfg{margin-top:22px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2)}
+  details.cfg summary{cursor:pointer; padding:12px 16px; font-size:13px; color:var(--muted); user-select:none}
+  details.cfg .body{padding:4px 16px 16px}
+  .foot{margin-top:26px; font-size:11.5px; color:#4a5674; text-align:center; line-height:1.7}
+  .link-out{font-family:var(--mono); font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">◆</div>
+      <div>
+        <h1>Token Launch Console</h1>
+        <p>Pay the fee, launch a BEP20, verify it — from here.</p>
+      </div>
+    </div>
+    <div class="net-wrap">
+      <button class="btn gold" id="connectBtn">Connect wallet</button>
+      <div class="net" id="net" style="display:none"></div>
+    </div>
+  </header>
+
+  <!-- STEP 1: configure, pay, approve & launch — all in one -->
+  <section class="step" id="s2" data-locked="1">
+    <div class="step-head">
+      <div class="num">1</div>
+      <div><h2>Configure &amp; launch your token</h2><p class="sub">Set the details, then pay — the fee is approved, the token deployed, and the source verified on BscScan, all in one click.</p></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="tName">Token name</label><input id="tName" placeholder="My Awesome Token" maxlength="40"/></div>
+      <div class="field"><label for="tSym">Symbol</label><input id="tSym" placeholder="MAT" maxlength="12"/></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="tDec">Decimals</label><input id="tDec" type="number" value="18" min="0" max="18"/></div>
+      <div class="field"><label for="tSup">Total supply (whole tokens)</label><input id="tSup" type="number" value="1000000" min="1"/></div>
+    </div>
+    <div class="field"><label for="slip">Max slippage on the reserve buy (%)</label><input id="slip" type="number" value="3" min="0" max="50" step="0.1"/></div>
+    <div class="kv"><span class="k">Launch fee</span><span class="v" id="feeView">—</span></div>
+    <div class="kv"><span class="k">Your USDT balance</span><span class="v" id="balView">—</span></div>
+    <button class="btn gold wide" id="launchBtn" style="margin-top:16px" disabled>Pay, launch &amp; verify token</button>
+    <p class="note">One click pays the fee (approving USDT first if needed), deploys your token, and submits it to BscScan for verification. These details become permanent.</p>
+    <div class="status" id="s3status" style="display:none"><span class="dot"></span><span id="s3msg"></span></div>
+  </section>
+
+  <!-- STEP 3: verify -->
+  <section class="step" id="s4" data-locked="1">
+    <div class="step-head">
+      <div class="num">2</div>
+      <div><h2>Verify on BscScan</h2><p class="sub">Runs automatically right after launch — retry or verify manually if it doesn't finish.</p></div>
+    </div>
+    <div class="kv"><span class="k">New token</span><span class="v" id="newTokenAddr">—</span></div>
+    <button class="btn ghost wide" id="verifyBtn" style="margin-top:12px; display:none">Verify again</button>
+    <div class="status" id="s4status" style="display:none"><span class="dot"></span><span id="s4msg"></span></div>
+    <div id="s4link" style="margin-top:12px; display:none"></div>
+
+    <div class="manual" id="manualPanel" style="display:none">
+      <div class="divider">or verify manually on BscScan</div>
+      <p class="note">On BscScan's <b>Verify &amp; Publish</b> page, choose "Solidity (Single file)" and fill in the details below. The Constructor Arguments are already ABI-encoded.</p>
+
+      <div class="kv"><span class="k">Compiler type</span><span class="v">Solidity (Single file)</span></div>
+      <div class="kv"><span class="k">Compiler version</span><span class="v">v0.8.28+commit.7893614a</span></div>
+      <div class="kv"><span class="k">Open source license</span><span class="v">MIT (3)</span></div>
+      <div class="kv"><span class="k">Optimization</span><span class="v">Yes — 200 runs</span></div>
+      <div class="kv"><span class="k">Contract name (jab pooche)</span><span class="v">CustomToken</span></div>
+
+      <div class="code-head"><span>Constructor Arguments ABI-encoded (leave the "0x" off)</span>
+        <button class="copy" data-copy="mArgs">Copy</button></div>
+      <pre class="code" id="mArgs" style="max-height:120px">—</pre>
+
+      <div class="code-head"><span>Contract source code (paste the whole file)</span>
+        <button class="copy" data-copy="mSource">Copy</button></div>
+      <textarea class="code" id="mSource" readonly spellcheck="false"></textarea>
+
+      <a class="btn ghost wide" id="openVerify" target="_blank" rel="noopener" style="margin-top:12px; text-align:center; text-decoration:none">Open BscScan verify page →</a>
+    </div>
+  </section>
+
+  <!-- CONFIG -->
+  <details class="cfg">
+    <summary>⚙ Settings — factory, network &amp; verifier</summary>
+    <div class="body">
+      <div class="field"><label>Factory contract address</label><input id="cfgFactory" class="mono" value="0x7b955dfD252d82D803f8b24d470F85f9c85C368B" placeholder="0x…"/></div>
+      <div class="field"><label>USDT / payment token address</label><input id="cfgUsdt" class="mono" value="0x55d398326f99059fF775485246999027B3197955"/></div>
+      <div class="row">
+        <div class="field"><label>Chain ID</label><input id="cfgChain" class="mono" value="56"/></div>
+        <div class="field"><label>Explorer base URL</label><input id="cfgExplorer" class="mono" value="https://bscscan.com"/></div>
+      </div>
+      <div class="field"><label>Verify proxy URL (your Cloudflare Worker)</label><input id="cfgVerify" class="mono" value="https://token-verify-proxy.myico.workers.dev" placeholder="https://your-worker.workers.dev"/></div>
+      <button class="btn ghost" id="saveCfg">Save settings</button>
+      <p class="note">Settings are stored in this browser only. USDT on BSC has <b>18 decimals</b>, so the fee is read live from the factory.</p>
+    </div>
+  </details>
+
+  <!-- ADMIN (owner only) -->
+  <section class="step admin" id="adminPanel" style="display:none">
+    <div class="step-head">
+      <div class="num" style="border-color:var(--gold-dim); color:var(--gold)">★</div>
+      <div><h2>Admin controls</h2><p class="sub">Only you (the factory owner) can see this.</p></div>
+    </div>
+
+    <div class="field">
+      <label for="aFee">Launch fee (USDT)</label>
+      <div class="row" style="gap:8px">
+        <input id="aFee" type="number" min="0" step="0.01" style="flex:1"/>
+        <button class="btn" id="aFeeBtn" style="flex:none">Update fee</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="aBps">Reserve buy split (%) — rest goes to treasury</label>
+      <div class="row" style="gap:8px">
+        <input id="aBps" type="number" min="0" max="100" step="0.01" style="flex:1"/>
+        <button class="btn" id="aBpsBtn" style="flex:none">Update split</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="aTreasury">Treasury address</label>
+      <div class="row" style="gap:8px">
+        <input id="aTreasury" class="mono" style="flex:1"/>
+        <button class="btn" id="aTreasuryBtn" style="flex:none">Update</button>
+      </div>
+    </div>
+
+    <div class="field" style="margin-bottom:0">
+      <label for="aOwner">Transfer ownership (careful — irreversible)</label>
+      <div class="row" style="gap:8px">
+        <input id="aOwner" class="mono" placeholder="0x… new owner" style="flex:1"/>
+        <button class="btn" id="aOwnerBtn" style="flex:none">Transfer</button>
+      </div>
+    </div>
+
+    <div class="status" id="adminStatus" style="display:none"><span class="dot"></span><span id="adminMsg"></span></div>
+  </section>
+
+  <p class="foot">
+    Each launched token is an independent contract you fully own.<br>
+    Deploy the factory with compiler <span class="link-out">0.8.28</span>, optimizer <span class="link-out">on / 200 runs</span> — the verifier must match.
+  </p>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Exact source that deployed the factory — paste this whole file for single-file verification.
+const TOKEN_SOURCE = `// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+interface IPancakeRouter {
+    function swapExactTokensForTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external returns (uint256[] memory amounts);
+    function getAmountsOut(uint256 amountIn, address[] calldata path)
+        external view returns (uint256[] memory amounts);
+}
+
+interface ITranceReserve {
+    function donate(uint256 amount) external;
+}
+
+interface IERC20Min {
+    function balanceOf(address) external view returns (uint256);
+}
+
+contract CustomToken {
+    string public name;
+    string public symbol;
+    uint8 public immutable decimals;
+    uint256 public totalSupply;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    constructor(
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals,
+        uint256 _initialSupply,
+        address _owner
+    ) {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+        uint256 supply = _initialSupply * (10 ** uint256(_decimals));
+        totalSupply = supply;
+        balanceOf[_owner] = supply;
+        emit Transfer(address(0), _owner, supply);
+    }
+
+    function transfer(address to, uint256 value) external returns (bool) {
+        _transfer(msg.sender, to, value);
+        return true;
+    }
+
+    function approve(address spender, uint256 value) external returns (bool) {
+        allowance[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        require(allowed >= value, "ERC20: insufficient allowance");
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - value;
+        _transfer(from, to, value);
+        return true;
+    }
+
+    function burn(uint256 value) external {
+        require(balanceOf[msg.sender] >= value, "ERC20: burn exceeds balance");
+        balanceOf[msg.sender] -= value;
+        totalSupply -= value;
+        emit Transfer(msg.sender, address(0), value);
+    }
+
+    function _transfer(address from, address to, uint256 value) internal {
+        require(to != address(0), "ERC20: transfer to zero");
+        uint256 bal = balanceOf[from];
+        require(bal >= value, "ERC20: insufficient balance");
+        unchecked { balanceOf[from] = bal - value; balanceOf[to] += value; }
+        emit Transfer(from, to, value);
+    }
+}
+
+contract TokenLaunchFactory {
+    address public owner;
+    address public immutable paymentToken;
+    address public immutable router;
+    address public immutable kavi;
+    address public immutable reserve;
+
+    uint256 public creationFee;
+    uint256 public buyBps;
+    address public treasury;
+
+    uint256 public constant BPS = 10_000;
+    uint256 private _locked = 1;
+
+    struct TokenRecord {
+        address token;
+        address creator;
+        string name;
+        string symbol;
+        uint256 supply;
+        uint256 timestamp;
+    }
+
+    TokenRecord[] public tokens;
+    mapping(address => address[]) public tokensByCreator;
+
+    event FactoryDeployed(
+        address indexed owner,
+        address paymentToken,
+        address router,
+        address kavi,
+        address reserve,
+        uint256 creationFee,
+        uint256 buyBps,
+        address treasury
+    );
+    event TokenCreated(
+        address indexed creator,
+        address indexed token,
+        string name,
+        string symbol,
+        uint8 decimals,
+        uint256 supply
+    );
+    event FeeCollected(address indexed payer, uint256 amount);
+    event FeeSplit(uint256 treasuryAmount, uint256 buyAmount);
+    event TreasuryPaid(address indexed treasury, uint256 amount);
+    event ReserveBuy(uint256 usdtSpent, uint256 minKaviOut, uint256 kaviReceived);
+    event ReserveFunded(address indexed reserve, uint256 kaviAmount);
+    event FeeUpdated(uint256 oldFee, uint256 newFee);
+    event BuyBpsUpdated(uint256 oldBps, uint256 newBps);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "not owner");
+        _;
+    }
+
+    modifier nonReentrant() {
+        require(_locked == 1, "reentrant");
+        _locked = 2;
+        _;
+        _locked = 1;
+    }
+
+    constructor(
+        address _paymentToken,
+        address _router,
+        address _kavi,
+        address _reserve,
+        uint256 _creationFee,
+        uint256 _buyBps,
+        address _treasury,
+        address _owner
+    ) {
+        require(
+            _paymentToken != address(0) && _router != address(0) && _kavi != address(0)
+            && _reserve != address(0) && _treasury != address(0) && _owner != address(0),
+            "zero addr"
+        );
+        require(_buyBps <= BPS, "buyBps>100%");
+        paymentToken = _paymentToken;
+        router = _router;
+        kavi = _kavi;
+        reserve = _reserve;
+        creationFee = _creationFee;
+        buyBps = _buyBps;
+        treasury = _treasury;
+        owner = _owner;
+
+        emit OwnershipTransferred(address(0), _owner);
+        emit FeeUpdated(0, _creationFee);
+        emit BuyBpsUpdated(0, _buyBps);
+        emit TreasuryUpdated(address(0), _treasury);
+        emit FactoryDeployed(_owner, _paymentToken, _router, _kavi, _reserve, _creationFee, _buyBps, _treasury);
+    }
+
+    function createToken(
+        string calldata _name,
+        string calldata _symbol,
+        uint8 _decimals,
+        uint256 _initialSupply,
+        uint256 minKaviOut
+    ) external nonReentrant returns (address tokenAddress) {
+        require(bytes(_name).length > 0, "name required");
+        require(bytes(_symbol).length > 0, "symbol required");
+        require(_initialSupply > 0, "supply required");
+        require(_decimals <= 18, "decimals too high");
+
+        uint256 fee = creationFee;
+        _safeTransferFrom(paymentToken, msg.sender, address(this), fee);
+        emit FeeCollected(msg.sender, fee);
+
+        uint256 buyAmount = (fee * buyBps) / BPS;
+        uint256 treasuryAmount = fee - buyAmount;
+        emit FeeSplit(treasuryAmount, buyAmount);
+
+        if (treasuryAmount > 0) {
+            _safeTransfer(paymentToken, treasury, treasuryAmount);
+            emit TreasuryPaid(treasury, treasuryAmount);
+        }
+
+        if (buyAmount > 0) {
+            _safeApprove(paymentToken, router, buyAmount);
+
+            address[] memory path = new address[](2);
+            path[0] = paymentToken;
+            path[1] = kavi;
+
+            uint256 kaviBefore = IERC20Min(kavi).balanceOf(address(this));
+            IPancakeRouter(router).swapExactTokensForTokens(
+                buyAmount, minKaviOut, path, address(this), block.timestamp
+            );
+            uint256 kaviReceived = IERC20Min(kavi).balanceOf(address(this)) - kaviBefore;
+            require(kaviReceived > 0, "no kavi received");
+            emit ReserveBuy(buyAmount, minKaviOut, kaviReceived);
+
+            _safeApprove(kavi, reserve, kaviReceived);
+            ITranceReserve(reserve).donate(kaviReceived);
+            emit ReserveFunded(reserve, kaviReceived);
+        }
+
+        CustomToken token = new CustomToken(_name, _symbol, _decimals, _initialSupply, msg.sender);
+        tokenAddress = address(token);
+
+        tokens.push(TokenRecord(tokenAddress, msg.sender, _name, _symbol, _initialSupply, block.timestamp));
+        tokensByCreator[msg.sender].push(tokenAddress);
+        emit TokenCreated(msg.sender, tokenAddress, _name, _symbol, _decimals, _initialSupply);
+    }
+
+    function quoteBuy() external view returns (uint256 buyAmount, uint256 expectedKavi) {
+        buyAmount = (creationFee * buyBps) / BPS;
+        if (buyAmount == 0) return (0, 0);
+        address[] memory path = new address[](2);
+        path[0] = paymentToken;
+        path[1] = kavi;
+        uint256[] memory outs = IPancakeRouter(router).getAmountsOut(buyAmount, path);
+        expectedKavi = outs[outs.length - 1];
+    }
+
+    function setFee(uint256 newFee) external onlyOwner {
+        emit FeeUpdated(creationFee, newFee);
+        creationFee = newFee;
+    }
+
+    function setBuyBps(uint256 newBps) external onlyOwner {
+        require(newBps <= BPS, "buyBps>100%");
+        emit BuyBpsUpdated(buyBps, newBps);
+        buyBps = newBps;
+    }
+
+    function setTreasury(address newTreasury) external onlyOwner {
+        require(newTreasury != address(0), "treasury=0");
+        emit TreasuryUpdated(treasury, newTreasury);
+        treasury = newTreasury;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "owner=0");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    function totalTokens() external view returns (uint256) {
+        return tokens.length;
+    }
+
+    function getTokensByCreator(address creator) external view returns (address[] memory) {
+        return tokensByCreator[creator];
+    }
+
+    function _safeTransfer(address token, address to, uint256 amount) internal {
+        _call(token, abi.encodeWithSelector(0xa9059cbb, to, amount), "transfer failed");
+    }
+
+    function _safeTransferFrom(address token, address from, address to, uint256 amount) internal {
+        _call(token, abi.encodeWithSelector(0x23b872dd, from, to, amount), "transferFrom failed");
+    }
+
+    function _safeApprove(address token, address spender, uint256 amount) internal {
+        _call(token, abi.encodeWithSelector(0x095ea7b3, spender, uint256(0)), "approve0 failed");
+        if (amount > 0) _call(token, abi.encodeWithSelector(0x095ea7b3, spender, amount), "approve failed");
+    }
+
+    function _call(address token, bytes memory data, string memory errMsg) private {
+        (bool ok, bytes memory ret) = token.call(data);
+        require(ok && (ret.length == 0 || abi.decode(ret, (bool))), errMsg);
+    }
+}
+`;
+
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)"
+];
+const FACTORY_ABI = [
+  "function creationFee() view returns (uint256)",
+  "function paymentToken() view returns (address)",
+  "function buyBps() view returns (uint256)",
+  "function treasury() view returns (address)",
+  "function owner() view returns (address)",
+  "function quoteBuy() view returns (uint256 buyAmount, uint256 expectedKavi)",
+  "function createToken(string,string,uint8,uint256,uint256) returns (address)",
+  "function setFee(uint256)",
+  "function setBuyBps(uint256)",
+  "function setTreasury(address)",
+  "function transferOwnership(address)",
+  "event TokenCreated(address indexed creator, address indexed token, string name, string symbol, uint8 decimals, uint256 supply)"
+];
+
+const CFG_KEYS = ["cfgFactory","cfgUsdt","cfgChain","cfgExplorer","cfgVerify"];
+function loadCfg(){ CFG_KEYS.forEach(k=>{ try{ const v=localStorage.getItem(k); if(v!==null) $(k).value=v; }catch(e){} }); }
+function saveCfg(){ CFG_KEYS.forEach(k=>{ try{ localStorage.setItem(k,$(k).value.trim()); }catch(e){} }); showToast({kind:"success", title:"Settings saved."}); }
+loadCfg();
+$("saveCfg").onclick = saveCfg;
+
+let provider, signer, account, usdtDec = 18, feeRaw = 0n, lastLaunch = null, buyBps = 0n;
+
+function setStep(n, {locked, done}={}){
+  const el = $("s"+n);
+  if(locked!==undefined) el.dataset.locked = locked ? "1" : "0";
+  if(done!==undefined) el.dataset.done = done ? "1" : "0";
+}
+function flash(box,msg,kind,text){
+  $(box).style.display="flex";
+  const dot = $(box).querySelector(".dot");
+  dot.className = "dot" + (kind?(" "+kind):"");
+  $(msg).textContent = text;
+}
+const short = a => a ? a.slice(0,6)+"…"+a.slice(-4) : "—";
+function cfg(k){ return $("cfg"+k).value.trim(); }
+
+// ---------- error parsing ----------
+function clean(s){ s = String(s || "").trim(); return s.length > 180 ? s.slice(0,177)+"…" : s; }
+function parseErr(e){
+  if(!e) return "Something went wrong.";
+  const code = e.code || (e.info && e.info.error && e.info.error.code);
+  if(code === "ACTION_REJECTED" || code === 4001) return "You rejected the request in your wallet.";
+  if(code === "INSUFFICIENT_FUNDS") return "Not enough BNB to cover gas.";
+  if(code === "NETWORK_ERROR") return "Network error — check your connection and RPC.";
+  if(e.reason) return "Reverted: " + clean(e.reason);
+  const nested = (e.info && e.info.error && e.info.error.message) || (e.error && e.error.message) || (e.data && e.data.message);
+  if(nested) return clean(nested);
+  if(e.shortMessage) return clean(e.shortMessage);
+  if(e.message) return clean(e.message);
+  return "Transaction failed.";
+}
+
+// ---------- toasts ----------
+function icFor(kind){ return kind === "pending" ? '<span class="spin"></span>' : kind === "success" ? "✓" : kind === "error" ? "✕" : "ℹ"; }
+function paintToast(el, o){
+  if(o.kind){ el.className = "toast " + o.kind; el.querySelector(".ic").innerHTML = icFor(o.kind); }
+  if(o.title !== undefined) el.querySelector(".t").textContent = o.title;
+  if(o.hash !== undefined){
+    const lnk = el.querySelector(".lnk"); lnk.innerHTML = "";
+    if(o.hash){
+      const a = document.createElement("a"); a.className = "tx";
+      a.href = cfg("Explorer").replace(/\/$/,"") + "/tx/" + o.hash;
+      a.target = "_blank"; a.rel = "noopener"; a.textContent = "View on BscScan ↗";
+      lnk.appendChild(a);
+    }
+  }
+}
+function showToast(o){
+  const wrap = $("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + (o.kind || "info");
+  el.innerHTML = '<div class="ic"></div><div class="body"><div class="t"></div><div class="lnk"></div></div><button class="x" aria-label="Dismiss">×</button>';
+  wrap.appendChild(el);
+  const api = {
+    el, _timer: null,
+    update(u){ paintToast(el, u); if(u.sticky === false) this._auto(u.kind); return this; },
+    dismiss(){ clearTimeout(this._timer); el.remove(); },
+    _auto(kind){ clearTimeout(this._timer); this._timer = setTimeout(()=>el.remove(), kind === "error" ? 9000 : 6000); }
+  };
+  el.querySelector(".x").onclick = () => api.dismiss();
+  paintToast(el, { kind: o.kind || "info", title: o.title || "", hash: o.hash || "" });
+  if(!o.sticky) api._auto(o.kind);
+  return api;
+}
+
+// ---------- transaction runner (popup lifecycle + error handling) ----------
+async function runTx(buildTx, labels){
+  labels = labels || {};
+  const t = showToast({ kind:"pending", title: labels.confirm || "Confirm in your wallet…", sticky:true });
+  try{
+    const tx = await buildTx();
+    t.update({ kind:"pending", title: labels.submitted || "Transaction submitted", hash: tx.hash });
+    const rcpt = await tx.wait();
+    if(rcpt && rcpt.status === 0){ throw new Error("Transaction reverted on-chain."); }
+    t.update({ kind:"success", title: labels.success || "Transaction confirmed", hash: tx.hash, sticky:false });
+    return rcpt;
+  }catch(e){
+    t.update({ kind:"error", title: parseErr(e), sticky:false });
+    throw e;
+  }
+}
+
+// ---------- connect ----------
+$("connectBtn").onclick = async () => {
+  if(!window.ethereum){ showToast({kind:"error",title:"No wallet found. Install MetaMask."}); return; }
+  if(!cfg("Factory")){ showToast({kind:"error",title:"Set the factory address in Settings below first."}); return; }
+  try{
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    const wantChain = BigInt(cfg("Chain")||"56");
+    let network = await provider.getNetwork();
+    if(network.chainId !== wantChain){
+      try{
+        await window.ethereum.request({ method:"wallet_switchEthereumChain",
+          params:[{ chainId:"0x"+wantChain.toString(16) }] });
+        provider = new ethers.BrowserProvider(window.ethereum);
+      }catch(e){ showToast({kind:"error",title:"Switch your wallet to chain "+wantChain+" and retry."}); return; }
+    }
+    signer = await provider.getSigner();
+    account = await signer.getAddress();
+    network = await provider.getNetwork();
+    $("net").innerHTML = "chain <b>"+network.chainId+"</b> · <b>"+short(account)+"</b>";
+    $("net").style.display = "block";
+    $("connectBtn").style.display = "none";
+    showToast({ kind:"success", title:"Wallet connected — "+short(account) });
+    setStep(2,{locked:false});
+    await loadFactory();
+  }catch(e){ showToast({kind:"error", title: parseErr(e)}); }
+};
+
+async function loadFactory(){
+  try{
+    const factory = new ethers.Contract(cfg("Factory"), FACTORY_ABI, provider);
+    const pay = await factory.paymentToken();
+    if(cfg("Usdt").toLowerCase() !== pay.toLowerCase()){ $("cfgUsdt").value = pay; }
+    feeRaw = await factory.creationFee();
+    buyBps = await factory.buyBps();
+    const usdt = new ethers.Contract(pay, ERC20_ABI, provider);
+    usdtDec = Number(await usdt.decimals());
+    const bal = await usdt.balanceOf(account);
+    $("feeView").textContent = ethers.formatUnits(feeRaw, usdtDec) + " USDT";
+    $("balView").textContent = ethers.formatUnits(bal, usdtDec) + " USDT";
+    await maybeShowAdmin(factory);
+    await refreshAllowance();
+  }catch(e){ flash("s3status","s3msg","bad","Could not read factory — check the address & chain."); }
+}
+
+async function refreshAllowance(){
+  const usdt = new ethers.Contract(cfg("Usdt"), ERC20_ABI, provider);
+  const allow = await usdt.allowance(account, cfg("Factory"));
+  const ok = allow >= feeRaw && feeRaw > 0n;
+  $("launchBtn").disabled = false;
+  return ok;
+}
+
+// ---------- Admin (owner only) ----------
+let adminWired = false;
+async function maybeShowAdmin(factory){
+  try{
+    const [own, treas] = await Promise.all([factory.owner(), factory.treasury()]);
+    if(own.toLowerCase() !== account.toLowerCase()){ $("adminPanel").style.display="none"; return; }
+    $("aFee").value = ethers.formatUnits(feeRaw, usdtDec);
+    $("aBps").value = (Number(buyBps) / 100).toString();
+    $("aTreasury").value = treas;
+    $("adminPanel").style.display = "block";
+    if(!adminWired){ wireAdmin(); adminWired = true; }
+  }catch(e){ $("adminPanel").style.display="none"; }
+}
+
+async function adminTx(runner, labels){
+  try{
+    const f = new ethers.Contract(cfg("Factory"), FACTORY_ABI, signer);
+    await runTx(() => runner(f), labels);
+    flash("adminStatus","adminMsg","ok","Updated — refreshing…");
+    await loadFactory();
+    flash("adminStatus","adminMsg","ok","Updated ✓");
+  }catch(e){ flash("adminStatus","adminMsg","bad", parseErr(e)); }
+}
+
+function wireAdmin(){
+  $("aFeeBtn").onclick = () => {
+    const v = $("aFee").value.trim();
+    if(!(parseFloat(v) >= 0)){ flash("adminStatus","adminMsg","bad","Enter a valid fee."); return; }
+    const raw = ethers.parseUnits(v, usdtDec);
+    adminTx(f => f.setFee(raw), { confirm:"Update fee — confirm in wallet…", submitted:"Update submitted", success:"Fee updated to "+v+" USDT" });
+  };
+  $("aBpsBtn").onclick = () => {
+    const pct = parseFloat($("aBps").value);
+    if(!(pct >= 0 && pct <= 100)){ flash("adminStatus","adminMsg","bad","Split must be 0–100%."); return; }
+    const bps = BigInt(Math.round(pct * 100));
+    adminTx(f => f.setBuyBps(bps), { confirm:"Update split — confirm in wallet…", submitted:"Update submitted", success:"Reserve split set to "+pct+"%" });
+  };
+  $("aTreasuryBtn").onclick = () => {
+    const a = $("aTreasury").value.trim();
+    if(!ethers.isAddress(a)){ flash("adminStatus","adminMsg","bad","Enter a valid address."); return; }
+    adminTx(f => f.setTreasury(a), { confirm:"Update treasury — confirm in wallet…", submitted:"Update submitted", success:"Treasury updated" });
+  };
+  $("aOwnerBtn").onclick = () => {
+    const a = $("aOwner").value.trim();
+    if(!ethers.isAddress(a)){ flash("adminStatus","adminMsg","bad","Enter a valid address."); return; }
+    if(!confirm("Transfer ownership to "+a+" ? This is irreversible — you will lose admin access.")) return;
+    adminTx(f => f.transferOwnership(a), { confirm:"Transfer ownership — confirm in wallet…", submitted:"Transfer submitted", success:"Ownership transferred" });
+  };
+}
+
+// ---------- STEP 3: approve (if needed) + launch ----------
+$("launchBtn").onclick = async () => {
+  const name=$("tName").value.trim(), sym=$("tSym").value.trim();
+  const dec=parseInt($("tDec").value,10), sup=$("tSup").value.trim();
+  if(!name||!sym){ flash("s3status","s3msg","bad","Name and symbol are required."); return; }
+  if(!(dec>=0&&dec<=18)){ flash("s3status","s3msg","bad","Decimals must be 0–18."); return; }
+  if(!(BigInt(sup||"0")>0n)){ flash("s3status","s3msg","bad","Supply must be greater than 0."); return; }
+  try{
+    const factory = new ethers.Contract(cfg("Factory"), FACTORY_ABI, signer);
+    const supplyBig = BigInt(sup);
+
+    // 1) approve the fee first if the current allowance is not enough
+    if(!(await refreshAllowance())){
+      const usdt = new ethers.Contract(cfg("Usdt"), ERC20_ABI, signer);
+      await runTx(
+        () => usdt.approve(cfg("Factory"), feeRaw),
+        { confirm:"Approve USDT — confirm in wallet…", submitted:"Approval submitted", success:"USDT fee approved" }
+      );
+    }
+
+    // 2) compute slippage-guarded minKaviOut for the reserve buy leg
+    let minKaviOut = 0n;
+    if(buyBps > 0n){
+      try{
+        const [buyAmt, expKavi] = await factory.quoteBuy();
+        if(buyAmt > 0n){
+          const slipPct = parseFloat($("slip").value || "3");
+          const slipBps = BigInt(Math.round(Math.max(0, Math.min(50, slipPct)) * 100));
+          minKaviOut = (expKavi * (10000n - slipBps)) / 10000n;
+          if(minKaviOut <= 0n) throw new Error("bad quote");
+        }
+      }catch(e){
+        flash("s3status","s3msg","bad","Reserve buy quote failed — check KAVI/USDT liquidity.");
+        return;
+      }
+    }
+
+    // 3) launch
+    flash("s3status","s3msg","pending","Deploying token…");
+    const rcpt = await runTx(
+      () => factory.createToken(name, sym, dec, supplyBig, minKaviOut),
+      { confirm:"Launch token — confirm in wallet…", submitted:"Launch submitted", success:"Token launched" }
+    );
+    // parse TokenCreated
+    let tokenAddr = null;
+    for(const log of rcpt.logs){
+      try{ const p = factory.interface.parseLog(log);
+        if(p && p.name==="TokenCreated"){ tokenAddr = p.args.token; break; } }catch(e){}
+    }
+    if(!tokenAddr) throw new Error("Deployed, but couldn't read the token address from logs.");
+    lastLaunch = { address: tokenAddr, name, sym, dec, supply: supplyBig.toString(), owner: account };
+    flash("s3status","s3msg","ok","Launched! "+short(tokenAddr)+" — verifying…");
+    showToast({ kind:"success", title:"Token live at "+short(tokenAddr) });
+    setStep(2,{done:true});
+    setStep(4,{locked:false});
+    $("newTokenAddr").innerHTML = '<a href="'+cfg("Explorer")+'/address/'+tokenAddr+'" target="_blank" rel="noopener">'+tokenAddr+'</a>';
+    showManual();
+    // same button flow continues straight into BscScan verification
+    await runVerify();
+  }catch(e){ flash("s3status","s3msg","bad", parseErr(e)); }
+};
+
+// ---------- Manual verification panel ----------
+function encodeCtorArgs(L){
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  return coder.encode(
+    ["string","string","uint8","uint256","address"],
+    [L.name, L.sym, L.dec, L.supply, L.owner]
+  ).slice(2); // strip 0x
+}
+function showManual(){
+  if(!lastLaunch) return;
+  $("mArgs").textContent = encodeCtorArgs(lastLaunch);
+  $("mSource").value = TOKEN_SOURCE;
+  $("openVerify").href = cfg("Explorer").replace(/\/$/,"") + "/verifyContract?a=" + lastLaunch.address;
+  $("manualPanel").style.display = "block";
+}
+// copy buttons
+document.querySelectorAll(".copy").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const el = $(btn.dataset.copy);
+    const text = el.value !== undefined ? el.value : el.textContent;
+    try{
+      await navigator.clipboard.writeText(text);
+    }catch(e){
+      // fallback for non-secure contexts
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+      t.select(); document.execCommand("copy"); t.remove();
+    }
+    const old = btn.textContent; btn.textContent = "Copied ✓"; btn.classList.add("done");
+    setTimeout(()=>{ btn.textContent = old; btn.classList.remove("done"); }, 1500);
+  });
+});
+
+// ---------- verify (auto after launch, or manual retry via the same flow) ----------
+async function runVerify(){
+  if(!lastLaunch){ return false; }
+  if(!cfg("Verify")){
+    const m="No verify proxy URL set — verify manually below, or add the URL in Settings and hit “Verify again”.";
+    flash("s4status","s4msg","bad",m); showToast({kind:"info",title:m});
+    $("verifyBtn").style.display="block"; $("verifyBtn").disabled=false;
+    return false;
+  }
+  $("verifyBtn").disabled = true;
+  const vt = showToast({ kind:"pending", title:"Submitting source to BscScan…", sticky:true });
+  try{
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const encoded = coder.encode(
+      ["string","string","uint8","uint256","address"],
+      [lastLaunch.name, lastLaunch.sym, lastLaunch.dec, lastLaunch.supply, lastLaunch.owner]
+    ).slice(2);
+
+    flash("s4status","s4msg","pending","Submitting source to BscScan…");
+    let submit;
+    try{
+      submit = await fetch(cfg("Verify").replace(/\/$/,"") + "/verify", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ chainid: cfg("Chain"), contractaddress: lastLaunch.address, constructorArguments: encoded })
+      });
+    }catch(e){ throw new Error("Can't reach the verify proxy — check the URL and that the worker is deployed."); }
+    if(!submit.ok){ throw new Error("Verify proxy returned HTTP "+submit.status+"."); }
+    const sj = await submit.json();
+    if(!sj.ok){ throw new Error(sj.error || "Submit rejected."); }
+    const guid = sj.guid;
+    flash("s4status","s4msg","pending","Queued. Waiting for BscScan… ("+guid.slice(0,8)+")");
+    vt.update({ kind:"pending", title:"Queued on BscScan — compiling…" });
+
+    let tries=0;
+    while(tries<24){
+      await new Promise(r=>setTimeout(r,5000)); tries++;
+      let stj;
+      try{
+        const st = await fetch(cfg("Verify").replace(/\/$/,"") + "/status?guid="+encodeURIComponent(guid)+"&chainid="+cfg("Chain"));
+        stj = await st.json();
+      }catch(e){ continue; } // transient network hiccup — keep polling
+      if(stj.pending){ flash("s4status","s4msg","pending","Still compiling on BscScan… ("+tries+")"); continue; }
+      if(stj.ok){
+        flash("s4status","s4msg","ok","Verified ✓");
+        const url = cfg("Explorer")+"/address/"+lastLaunch.address+"#code";
+        $("s4link").style.display="block";
+        $("s4link").innerHTML = '<a class="link-out" href="'+url+'" target="_blank" rel="noopener">View verified source on BscScan →</a>';
+        setStep(4,{done:true});
+        $("verifyBtn").style.display="none";
+        vt.update({ kind:"success", title:"Contract verified ✓", sticky:false });
+        return true;
+      }
+      throw new Error(stj.error || "Verification failed.");
+    }
+    // timed out
+    flash("s4status","s4msg","bad","Timed out. Check the contract page — it may still finish.");
+    vt.update({ kind:"error", title:"Verification timed out — it may still finish on BscScan.", sticky:false });
+    $("verifyBtn").style.display="block"; $("verifyBtn").disabled=false;
+    return false;
+  }catch(e){
+    flash("s4status","s4msg","bad", parseErr(e));
+    vt.update({ kind:"error", title: parseErr(e), sticky:false });
+    $("verifyBtn").style.display="block"; $("verifyBtn").disabled=false;
+    return false;
+  }
+}
+$("verifyBtn").onclick = () => runVerify();
+</script>
+</body>
+</html>
